@@ -1,4 +1,4 @@
-name: Multi-Source Filter & Shuffle (Only VLESS)
+name: Multi-Source Filter & Shuffle (Only Russian VLESS)
 
 on:
   schedule:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download and filter all sources
+      - name: Download and filter all sources (only Russian servers)
         run: |
           ALL_SERVERS=""
 
@@ -29,24 +29,24 @@ jobs:
             
             CLEANED=$(echo "$DATA" | perl -pe 's/[^[:print:]\n]//g' 2>/dev/null || true)
             
-            # ТОЛЬКО исключаем Россию
-            FILTERED=$(echo "$CLEANED" | grep -v '%F0%9F%87%B7%F0%9F%87%BA' || true)
+            # Оставляем ТОЛЬКО российские серверы (с флагом России)
+            FILTERED=$(echo "$CLEANED" | grep '%F0%9F%87%B7%F0%9F%87%BA' || true)
             
             if [ -n "$FILTERED" ]; then
               echo "$FILTERED" >> all_servers_temp.txt
               COUNT=$(echo "$FILTERED" | wc -l)
-              echo "  -> Added $COUNT servers"
+              echo "  -> Added $COUNT Russian servers"
             else
-              echo "  -> No servers after country filter"
+              echo "  -> No Russian servers found"
             fi
           done
 
           if [ -s all_servers_temp.txt ]; then
             sort -u all_servers_temp.txt > all_servers.txt
             TOTAL=$(wc -l < all_servers.txt)
-            echo "Total unique vless servers: $TOTAL"
+            echo "Total unique Russian vless servers: $TOTAL"
           else
-            echo "No servers found at all"
+            echo "No Russian servers found at all"
             touch all_servers.txt
           fi
           rm -f all_servers_temp.txt
@@ -79,7 +79,7 @@ jobs:
             for part in part_*; do
               if [ -f "$part" ]; then
                 mv "$part" "clean$FILE_NUM.txt"
-                echo "Created clean$FILE_NUM.txt with $(wc -l < clean$FILE_NUM.txt) servers"
+                echo "Created clean$FILE_NUM.txt with $(wc -l < clean$FILE_NUM.txt) Russian servers"
                 FILE_NUM=$((FILE_NUM + 1))
               fi
             done
@@ -94,5 +94,5 @@ jobs:
           git config user.email "github-actions@github.com"
           git add clean*.txt
           git status
-          git diff --staged --quiet || git commit -m "Auto-update $(date +'%Y-%m-%d %H:%M:%S')"
+          git diff --staged --quiet || git commit -m "Auto-update Russian servers $(date +'%Y-%m-%d %H:%M:%S')"
           git push origin main

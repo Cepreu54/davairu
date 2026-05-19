@@ -1,0 +1,98 @@
+name: Multi-Source Filter & Shuffle (Only VLESS)
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download and filter all sources
+        run: |
+          ALL_SERVERS=""
+
+          for i in 1 2 3 4 7 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26; do
+            URL="https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/refs/heads/main/githubmirror/${i}.txt"
+            echo "Processing: $URL"
+            
+            DATA=$(curl -sL --connect-timeout 10 "$URL" 2>/dev/null | grep '^vless://' || true)
+            
+            if [ -z "$DATA" ]; then
+              echo "  -> No vless servers, skipping"
+              continue
+            fi
+            
+            CLEANED=$(echo "$DATA" | perl -pe 's/[^[:print:]\n]//g' 2>/dev/null || true)
+            
+            # ТОЛЬКО исключаем Россию
+            FILTERED=$(echo "$CLEANED" | grep -v '%F0%9F%87%B7%F0%9F%87%BA' || true)
+            
+            if [ -n "$FILTERED" ]; then
+              echo "$FILTERED" >> all_servers_temp.txt
+              COUNT=$(echo "$FILTERED" | wc -l)
+              echo "  -> Added $COUNT servers"
+            else
+              echo "  -> No servers after country filter"
+            fi
+          done
+
+          if [ -s all_servers_temp.txt ]; then
+            sort -u all_servers_temp.txt > all_servers.txt
+            TOTAL=$(wc -l < all_servers.txt)
+            echo "Total unique vless servers: $TOTAL"
+          else
+            echo "No servers found at all"
+            touch all_servers.txt
+          fi
+          rm -f all_servers_temp.txt
+
+      - name: Split equally into 11 files
+        run: |
+          TOTAL=$(wc -l < all_servers.txt)
+          echo "Total: $TOTAL"
+          
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "No servers, creating empty clean1.txt"
+            echo "" > clean1.txt
+          else
+            # Перемешиваем
+            shuf all_servers.txt > shuffled.txt
+            
+            # Удаляем старые clean файлы
+            rm -f clean*.txt
+            
+            # Вычисляем, сколько серверов в каждом файле
+            FILES=11
+            LINES_PER_FILE=$(( (TOTAL + FILES - 1) / FILES ))
+            echo "Lines per file: $LINES_PER_FILE"
+            
+            # Разбиваем на файлы
+            split -l $LINES_PER_FILE -d shuffled.txt part_
+            
+            # Переименовываем в clean1.txt - clean11.txt
+            FILE_NUM=1
+            for part in part_*; do
+              if [ -f "$part" ]; then
+                mv "$part" "clean$FILE_NUM.txt"
+                echo "Created clean$FILE_NUM.txt with $(wc -l < clean$FILE_NUM.txt) servers"
+                FILE_NUM=$((FILE_NUM + 1))
+              fi
+            done
+            
+            rm -f shuffled.txt
+          fi
+          rm -f all_servers.txt
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add clean*.txt
+          git status
+          git diff --staged --quiet || git commit -m "Auto-update $(date +'%Y-%m-%d %H:%M:%S')"
+          git push origin main

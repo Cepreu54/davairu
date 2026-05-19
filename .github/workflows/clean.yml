@@ -51,54 +51,32 @@ jobs:
           fi
           rm -f all_servers_temp.txt
 
-      - name: Split equally into 11 files (force clean)
+      - name: Create single file (remove old files first)
         run: |
           TOTAL=$(wc -l < all_servers.txt)
           echo "Total: $TOTAL"
           
-          # ПРИНУДИТЕЛЬНО удаляем все старые clean файлы из Git и с диска
+          # Принудительно удаляем все старые clean файлы
           git rm -f clean*.txt 2>/dev/null || true
           rm -f clean*.txt
           
           if [ "$TOTAL" -eq 0 ]; then
-            echo "No servers, creating empty clean1.txt"
-            echo "" > clean1.txt
+            echo "No servers, creating empty clean.txt"
+            echo "" > clean.txt
           else
-            # Перемешиваем
-            shuf all_servers.txt > shuffled.txt
-            
-            # Вычисляем, сколько серверов в каждом файле
-            FILES=11
-            LINES_PER_FILE=$(( (TOTAL + FILES - 1) / FILES ))
-            echo "Lines per file: $LINES_PER_FILE"
-            
-            # Разбиваем на файлы
-            split -l $LINES_PER_FILE -d shuffled.txt part_
-            
-            # Переименовываем в clean1.txt - clean11.txt
-            FILE_NUM=1
-            for part in part_*; do
-              if [ -f "$part" ]; then
-                mv "$part" "clean$FILE_NUM.txt"
-                echo "Created clean$FILE_NUM.txt with $(wc -l < clean$FILE_NUM.txt) Russian servers"
-                FILE_NUM=$((FILE_NUM + 1))
-              fi
-            done
-            
-            rm -f shuffled.txt
+            # Перемешиваем и сохраняем в один файл
+            shuf all_servers.txt > clean.txt
+            echo "Created clean.txt with $(wc -l < clean.txt) Russian servers"
           fi
+          
           rm -f all_servers.txt
 
-      - name: Commit and push (force overwrite)
+      - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           
-          # Добавляем все clean файлы (старые уже удалены)
-          git add clean*.txt
-          
-          # Коммитим с принудительным обновлением
+          git add clean.txt
           git commit -m "Auto-update Russian servers $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           
-          # Пушим с force (на всякий случай, если были конфликты)
-          git push origin main --force
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Cepreu54/davairu.git main
